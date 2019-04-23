@@ -1,0 +1,6 @@
+{
+"hub":{
+    "enabled":"true",
+    "maxConnections":20
+    }
+}
