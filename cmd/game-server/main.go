@@ -9,7 +9,13 @@
 
 package main
 
-var app = appInit()
+var (
+	app      = appInit()
+	host     string
+	port     string
+	protocol string
+)
 
 func main() {
+
 }
