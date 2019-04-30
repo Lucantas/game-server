@@ -20,6 +20,10 @@ func (c *Client) connect(nc Client) {
 	fmt.Fprintf(conn, "GET / HTTP/1.0\r\n\r\n")
 }
 
+func (c *Client) address() string {
+	return c.Host + ":" + c.Port
+}
+
 func newClient(address string, network string) Client {
 	var host string
 	var port string

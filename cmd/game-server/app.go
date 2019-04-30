@@ -4,22 +4,26 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/lucantas/game-server/pkg/easyio"
-	"github.com/lucantas/game-server/pkg/strutil"
 )
 
 // connection commands
 const (
-	connect = "connect"
+	connect    = "connect"
+	spread     = "spread"
+	disconnect = "disconnect"
 )
 
 var (
-	hub = []Client{}
+	hub   Hub
+	games = []Match{}
 )
 
 // App holds all the settings to the service
@@ -57,7 +61,7 @@ func (a *App) run() {
 
 	json.Unmarshal(confBytes, &conf)
 
-	if hub := conf.Hub; hub.Enabled {
+	if hub = conf.Hub; hub.Enabled {
 		server := conf.Conn
 		host = server.Host
 		port = server.Port
@@ -87,42 +91,63 @@ func listen() {
 }
 
 func handleRequests(conn net.Conn) {
-	buf := make([]byte, 1024)
+	var p Payload
+	var buf bytes.Buffer
+	_, err := io.Copy(&buf, conn)
 
-	_, err := conn.Read(buf)
 	if err != nil {
-		log.Println("Error while reading request:", err.Error())
+		log.Println("Error while reading from buffer: ", err)
 	}
 
-	isConn, err := strutil.Equals(string(bytes.Trim(buf, "\x00")), connect)
+	content := buf.Bytes()
+	err = json.Unmarshal(content, &p)
+
 	if err != nil {
-		log.Println(err)
+		log.Println("Error while unmarshalling: ", err)
 	}
 
-	if isConn {
+	switch strings.ToLower(p.Method) {
+	case connect:
 		handleConnection(conn.RemoteAddr())
+	case spread:
+		spreadData(conn.RemoteAddr(), p)
+	case disconnect:
+		conn.Close()
 	}
-
-	conn.Write([]byte("Message received."))
-	conn.Close()
 }
 
 func handleConnection(addr net.Addr) {
 	if client := addr.String(); !badUser(client) {
 		// client is not on the list of banned addresses
 		// move him to the waiting list
-		addToHub(newClient(client, addr.Network()))
-		for _, c := range hub {
-			log.Println(c)
-		}
+		hub.add(newClient(client, addr.Network()))
 	}
 }
 
-func addToHub(c Client) {
-	hub = append(hub, c)
+func spreadData(addr net.Addr, p Payload) {
+	if validMatch(p.MatchID, addr.String()) {
+		// only spread data if the payload have a valid matchID
+	}
 }
 
 func badUser(address string) bool {
 	// TODO: read the list of banned addres
+	return false
+}
+
+func validMatch(matchID int64, addr string) bool {
+	if matchID > 0 {
+		for _, match := range games {
+			if match.ID == matchID {
+				// valid match
+				for _, client := range match.Clients {
+					if client.address() == addr {
+						// client belong to that match
+						return true
+					}
+				}
+			}
+		}
+	}
 	return false
 }
